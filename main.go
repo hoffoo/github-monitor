@@ -113,17 +113,12 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 	case "PullRequestReviewCommentEvent":
 		format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
 	default:
-		var hasEvent bool
 		for _, event := range skipEvents {
 			if event == gj.Type {
-				hasEvent = true
-				return true
+				return true // we skipped this event
 			}
 		}
-
-		if hasEvent == false {
-			format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
-		}
+		format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 	}
 
 	return
