@@ -126,10 +126,8 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 func format(f string, args ...interface{}) {
 
 	f = fmt.Sprintf(f, args...)
-	if limit > 0 {
-		if limit < len(f) {
-			f = f[:limit]
-		}
+	if limit > 0 && limit < len(f) {
+		f = f[:limit]
 	}
 
 	out.Write([]byte(f + "\n"))
