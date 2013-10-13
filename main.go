@@ -98,10 +98,7 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 	case "FollowEvent":
 		format("%s followed %s", gj.Actor.Login, gj.Payload.Target.Login)
 	case "IssuesEvent":
-		switch gj.Payload.Action {
-		case "opened":
-			format("%s issue %s", gj.Actor.Login, gj.Repo.Name)
-		}
+		format("%s issue %s", gj.Actor.Login, gj.Repo.Name)
 	case "IssueCommentEvent":
 		format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
 	case "PushEvent":
@@ -112,6 +109,8 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 		format("%s created %s", gj.Actor.Login, gj.Repo.Name)
 	case "PullRequestReviewCommentEvent":
 		format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
+	case "PullRequestEvent":
+		format("%s pulled %s", gj.Actor.Login, gj.Repo.Name)
 	default:
 		for _, event := range skipEvents {
 			if event == gj.Type {
