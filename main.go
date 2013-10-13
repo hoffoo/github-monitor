@@ -127,7 +127,9 @@ func format(f string, args ...interface{}) {
 
 	f = fmt.Sprintf(f, args...)
 	if limit > 0 {
-		f = f[:limit]
+		if limit < len(f) {
+			f = f[:limit]
+		}
 	}
 
 	out.Write([]byte(f + "\n"))
