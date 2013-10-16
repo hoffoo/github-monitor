@@ -14,6 +14,8 @@ import (
 var out io.Writer
 var limit int
 var nodupes map[string]int
+var showDupes bool
+
 var skipEvents = []string{
 	"GistEvent",
 	"MemberEvent",
@@ -27,8 +29,8 @@ const (
 func main() {
 
 	var count = flag.Int("m", 5, "max number of events to display")
-	var debug = flag.Bool("d", false, "debug - read from file instead of request")
 	flag.IntVar(&limit, "c", 0, "cut after this length of output")
+	flag.BoolVar(&showDupes, "d", false, "show duplicate events")
 
 	flag.Parse()
 	username := flag.Arg(USERNAME)
@@ -44,13 +46,9 @@ func main() {
 	var resp *http.Response
 	var err error
 
-	if *debug == false {
-		resp, err = http.Get(fmt.Sprintf(BASE_URL, username))
-		r = resp.Body
-		defer resp.Body.Close()
-	} else {
-		r, err = os.Open("sample.json")
-	}
+	resp, err = http.Get(fmt.Sprintf(BASE_URL, username))
+	r = resp.Body
+	defer resp.Body.Close()
 
 	if err != nil {
 		panic(err)
@@ -101,45 +99,45 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 
 	switch gj.Type {
 	case "WatchEvent":
-		format("%s starred %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s starred %s", gj.Actor.Login, gj.Repo.Name)
 	case "FollowEvent":
-		format("%s followed %s", gj.Actor.Login, gj.Payload.Target.Login)
+		skipped = format("%s followed %s", gj.Actor.Login, gj.Payload.Target.Login)
 	case "IssuesEvent":
 		switch gj.Payload.Action {
 		case "created":
-			format("%s comment issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
+			skipped = format("%s comment issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 		case "opened":
-			format("%s made issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
+			skipped = format("%s made issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 		case "closed":
-			format("%s closed issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
+			skipped = format("%s closed issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 		default:
-			format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
+			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	case "IssueCommentEvent":
-		format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
 	case "PushEvent":
-		format("%s pushed to %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s pushed to %s", gj.Actor.Login, gj.Repo.Name)
 	case "ForkEvent":
-		format("%s forked %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s forked %s", gj.Actor.Login, gj.Repo.Name)
 	case "CreateEvent":
 		switch gj.Payload.Ref_Type {
 		case "tag":
-			format("%s tagged %s %s", gj.Actor.Login, gj.Payload.Ref, gj.Repo.Name)
+			skipped = format("%s tagged %s %s", gj.Actor.Login, gj.Payload.Ref, gj.Repo.Name)
 		case "repository":
-			format("%s created %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s created %s", gj.Actor.Login, gj.Repo.Name)
 		default:
-			format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
+			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	case "PullRequestReviewCommentEvent":
-		format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
 	case "PullRequestEvent":
 		switch gj.Payload.Action {
 		case "closed":
-			format("%s closed pull %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s closed pull %s", gj.Actor.Login, gj.Repo.Name)
 		case "opened":
-			format("%s pull req %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s pull req %s", gj.Actor.Login, gj.Repo.Name)
 		default:
-			format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
+			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	default:
 		for _, event := range skipEvents {
@@ -147,13 +145,13 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 				return true // we skipped this event
 			}
 		}
-		format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
+		skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 	}
 
-	return
+	return skipped
 }
 
-func format(f string, args ...interface{}) {
+func format(f string, args ...interface{}) (skipped bool) {
 
 	f = fmt.Sprintf(f, args...)
 	sameAuthorRepo := fmt.Sprintf("%s/", f[:strings.Index(f, " ")])
@@ -163,11 +161,20 @@ func format(f string, args ...interface{}) {
 		f = f[:limit]
 	}
 
+	if showDupes == true {
+		out.Write([]byte(f + "\n"))
+		return false // always show dupes, dont mark skipped
+	}
+
 	// squash duplicates
-	if _,dupe := nodupes[f]; dupe == false {
+	if _, dupe := nodupes[f]; dupe == false {
 		out.Write([]byte(f + "\n"))
 		nodupes[f] = 0
+	} else {
+		return true // skipped because dupe
 	}
+
+	return false
 }
 
 func Receive(r io.Reader) []GithubJSON {

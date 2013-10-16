@@ -7,8 +7,8 @@ Options:
 
 ```sh
   -c=0: cut after this length of output
+  -d=false: show duplicate events
   -m=5: max number of events to display
-  -d=false: debug - read from file instead of request
 ```
 
 I use it in conky like so: ${execi 3600 /opt/bin/gohub -c 30 hoffoo}
