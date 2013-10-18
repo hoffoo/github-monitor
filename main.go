@@ -1,20 +1,26 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var out io.Writer
 var limit int
 var nodupes map[string]int
 var showDupes bool
+var debugOut *os.File
+var debug bool
 
 var skipEvents = []string{
 	"GistEvent",
@@ -22,44 +28,53 @@ var skipEvents = []string{
 }
 
 const (
-	BASE_URL     = "https://api.github.com/users/%s/received_events"
-	USERNAME int = 0
+	DEBUG_FILE = "/tmp/github-monitor.json"
+	USER_URL   = "https://api.github.com/users/%s/received_events"
+	SEARCH_URL = "https://api.github.com/search/repositories?q=language:%s&sort=stars"
 )
 
 func main() {
 
-	var count = flag.Int("m", 5, "max number of events to display")
-	flag.IntVar(&limit, "c", 0, "cut after this length of output")
+	var username string
+	var search string
+	var count = flag.Int("m", 0, "max number of items to display")
+	flag.IntVar(&limit, "c", 0, "cut text after this length of output")
 	flag.BoolVar(&showDupes, "d", false, "show duplicate events")
-
+	flag.StringVar(&username, "u", "", "username, get recent events")
+	flag.StringVar(&search, "l", "", "language, get the top projects created this month")
+	flag.BoolVar(&debug, "debug", false, "write github response to "+DEBUG_FILE)
 	flag.Parse()
-	username := flag.Arg(USERNAME)
 
 	nodupes = make(map[string]int)
+	out = os.Stdout
 
-	if username == "" {
-		fmt.Fprintf(os.Stderr, "Specify a username\n")
+	var dest string
+	if search != "" && username == "" {
+		now := time.Now()
+		localtime, _ := time.LoadLocation("Local") // may be buggy, should do somethign with err
+		minus10 := time.Date(now.Year(), now.Month(), now.Day()-10, 0, 0, 0, 0, localtime)
+		sarg := fmt.Sprintf("%s created:>%s-%s-%s",
+			search,
+			strconv.Itoa(minus10.Year()),
+			strconv.Itoa(int(minus10.Month())),
+			strconv.Itoa(minus10.Day()))
+		dest = fmt.Sprintf(SEARCH_URL, url.QueryEscape(sarg))
+	} else if username != "" && search == "" {
+		dest = fmt.Sprintf(USER_URL, url.QueryEscape(username))
+	} else {
+		fmt.Fprintln(os.Stderr, "pass either -l or -s, not both")
 		return
 	}
 
-	var r io.Reader
-	var resp *http.Response
-	var err error
-
-	resp, err = http.Get(fmt.Sprintf(BASE_URL, username))
-	r = resp.Body
-	defer resp.Body.Close()
-
-	if err != nil {
-		panic(err)
+	// setup debug file
+	if debug == true {
+		debugOut, _ = os.OpenFile(DEBUG_FILE, os.O_WRONLY|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0660)
 	}
 
-	result := Receive(r)
-
-	out = os.Stdout
+	result := receive(dest)
 
 	skipped := 0
-	for i, res := range result {
+	for i, res := range *result {
 		if res.summarize() {
 			skipped += 1
 		}
@@ -70,6 +85,46 @@ func main() {
 	}
 }
 
+func receive(dest string) *[]GithubJSON {
+
+	header := &http.Header{}
+	header.Add("Accept", "application/vnd.github.preview")
+
+	req, _ := http.NewRequest("GET", dest, nil)
+	req.Header = *header
+	client := &http.Client{}
+	resp, _ := client.Do(req)
+
+	data, _ := ioutil.ReadAll(resp.Body)
+	defer resp.Body.Close()
+
+	if debug == true {
+		var debugBuff bytes.Buffer
+		json.Indent(&debugBuff, data, "", "\t")
+		debugOut.Write(debugBuff.Bytes())
+	}
+
+	var result []GithubJSON
+	err := json.Unmarshal(data, &result)
+
+	// if fail try to unmarshall as search result
+	if err != nil {
+		searchHolder := struct {
+			Items *[]GithubJSON
+		}{&result}
+
+		err := json.Unmarshal(data, &searchHolder)
+
+		if err != nil {
+			panic("couldnt unmarshal github response")
+		}
+	}
+
+	return &result
+}
+
+/*
+holds both user stats data and search response json */
 type GithubJSON struct {
 	Actor struct {
 		Login, Url string
@@ -92,16 +147,28 @@ type GithubJSON struct {
 		Ref_Type string
 		Action   string
 	}
-	Type string
+	Type           string
+	Full_Name      string
+	Watchers_Count int
+	Forks_Count    int
+}
+
+func (gj *GithubJSON) GetType() string {
+	if gj.Type == "" {
+		return "Project"
+	}
+	return gj.Type
 }
 
 func (gj *GithubJSON) summarize() (skipped bool) {
 
-	switch gj.Type {
+	switch gj.GetType() {
+	case "Project":
+		skipped = format("%s %s", gj.Full_Name, strconv.Itoa(gj.Watchers_Count))
 	case "WatchEvent":
-		skipped = format("%s starred %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s star %s", gj.Actor.Login, gj.Repo.Name)
 	case "FollowEvent":
-		skipped = format("%s followed %s", gj.Actor.Login, gj.Payload.Target.Login)
+		skipped = format("%s follow %s", gj.Actor.Login, gj.Payload.Target.Login)
 	case "IssuesEvent":
 		switch gj.Payload.Action {
 		case "created":
@@ -109,33 +176,35 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 		case "opened":
 			skipped = format("%s made issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 		case "closed":
-			skipped = format("%s closed issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
+			skipped = format("%s close issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	case "IssueCommentEvent":
-		skipped = format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s comment issue %s", gj.Actor.Login, gj.Repo.Name)
 	case "PushEvent":
-		skipped = format("%s pushed to %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s push to %s", gj.Actor.Login, gj.Repo.Name)
 	case "ForkEvent":
-		skipped = format("%s forked %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s fork %s", gj.Actor.Login, gj.Repo.Name)
 	case "CreateEvent":
 		switch gj.Payload.Ref_Type {
 		case "tag":
-			skipped = format("%s tagged %s %s", gj.Actor.Login, gj.Payload.Ref, gj.Repo.Name)
+			skipped = format("%s tag %s %s", gj.Actor.Login, gj.Payload.Ref, gj.Repo.Name)
 		case "repository":
-			skipped = format("%s created %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s create %s", gj.Actor.Login, gj.Repo.Name)
+		case "branch":
+			skipped = format("%s branch %s", gj.Actor.Login, gj.Repo.Name)
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	case "PullRequestReviewCommentEvent":
-		skipped = format("%s commented %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s comment req %s", gj.Actor.Login, gj.Repo.Name)
 	case "PullRequestEvent":
 		switch gj.Payload.Action {
 		case "closed":
-			skipped = format("%s closed pull %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s close pull %s", gj.Actor.Login, gj.Repo.Name)
 		case "opened":
-			skipped = format("%s pull req %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s create pull %s", gj.Actor.Login, gj.Repo.Name)
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
@@ -154,8 +223,11 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 func format(f string, args ...interface{}) (skipped bool) {
 
 	f = fmt.Sprintf(f, args...)
-	sameAuthorRepo := fmt.Sprintf("%s/", f[:strings.Index(f, " ")])
-	f = strings.Replace(f, sameAuthorRepo, "", 1)
+	idx := strings.Index(f, " ")
+	if idx > -1 {
+		sameAuthorRepo := fmt.Sprintf("%s/", f[:strings.Index(f, " ")])
+		f = strings.Replace(f, sameAuthorRepo, "", 1)
+	}
 
 	if limit > 0 && limit < len(f) {
 		f = f[:limit]
@@ -175,23 +247,4 @@ func format(f string, args ...interface{}) (skipped bool) {
 	}
 
 	return false
-}
-
-func Receive(r io.Reader) []GithubJSON {
-
-	data, err := ioutil.ReadAll(r)
-
-	if err != nil {
-		panic(err)
-	}
-
-	var result []GithubJSON
-
-	err = json.Unmarshal(data, &result)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return result
 }
