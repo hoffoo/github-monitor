@@ -19,7 +19,7 @@ var out io.Writer
 var limit int
 var nodupes map[string]int // TODO make this an array
 var showDupes bool
-var debugOut *os.File
+var debugOut io.Writer
 var debug bool
 
 var skipEvents = []string{
@@ -68,7 +68,7 @@ func main() {
 
 	// setup debug file
 	if debug == true {
-		debugOut, _ = os.OpenFile(DEBUG_FILE, os.O_WRONLY|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0660)
+		debugOut = os.Stdout
 	}
 
 	result := receive(dest)
@@ -103,6 +103,7 @@ func receive(dest string) *[]GithubJSON {
 		var debugBuff bytes.Buffer
 		json.Indent(&debugBuff, data, "", "\t")
 		debugOut.Write(debugBuff.Bytes())
+		debugOut.Write([]byte("\n\n"))
 	}
 
 	var result []GithubJSON
@@ -143,6 +144,9 @@ type GithubJSON struct {
 		}
 		Target struct {
 			Login string
+		}
+		Release struct {
+			Tag_Name string
 		}
 		Ref      string
 		Ref_Type string
@@ -213,6 +217,13 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 		switch gj.Payload.Ref_Type {
 		case "branch":
 			skipped = format("%s del branch %s %s", gj.Actor.Login, gj.Payload.Ref, gj.Repo.Name)
+		default:
+			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
+		}
+	case "ReleaseEvent":
+		switch gj.Payload.Action {
+		case "published":
+			skipped = format("%s published %s %s", gj.Actor.Login, gj.Payload.Release.Tag_Name, gj.Repo.Name)
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
