@@ -17,7 +17,7 @@ import (
 
 var out io.Writer
 var limit int
-var nodupes map[string]int
+var nodupes map[string]int // TODO make this an array
 var showDupes bool
 var debugOut *os.File
 var debug bool
@@ -73,6 +73,7 @@ func main() {
 
 	result := receive(dest)
 
+	// TODO move this outside of main
 	skipped := 0
 	for i, res := range *result {
 		if res.summarize() {
@@ -205,6 +206,13 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 			skipped = format("%s close pull %s", gj.Actor.Login, gj.Repo.Name)
 		case "opened":
 			skipped = format("%s create pull %s", gj.Actor.Login, gj.Repo.Name)
+		default:
+			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
+		}
+	case "DeleteEvent":
+		switch gj.Payload.Ref_Type {
+		case "branch":
+			skipped = format("%s del branch %s %s", gj.Actor.Login, gj.Payload.Ref, gj.Repo.Name)
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
