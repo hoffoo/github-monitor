@@ -227,6 +227,8 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
+	case "CommitCommentEvent":
+		skipped = format("%s commit comment %s", gj.Actor.Login, gj.Repo.Name)
 	default:
 		for _, event := range skipEvents {
 			if event == gj.Type {
