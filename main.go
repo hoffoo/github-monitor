@@ -182,6 +182,8 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 			skipped = format("%s made issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 		case "closed":
 			skipped = format("%s close issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
+		case "reopened":
+			skipped = format("%s reopened issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
