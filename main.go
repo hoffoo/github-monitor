@@ -52,7 +52,7 @@ func main() {
 	if search != "" && username == "" {
 		now := time.Now()
 		localtime, _ := time.LoadLocation("Local") // may be buggy, should do somethign with err
-		minus10 := time.Date(now.Year(), now.Month(), now.Day()-10, 0, 0, 0, 0, localtime)
+		minus10 := time.Date(now.Year(), now.Month(), now.Day()-7, 0, 0, 0, 0, localtime)
 		sarg := fmt.Sprintf("%s created:>%s-%s-%s",
 			search,
 			strconv.Itoa(minus10.Year()),
@@ -151,6 +151,7 @@ type GithubJSON struct {
 		Ref      string
 		Ref_Type string
 		Action   string
+		Number   int
 	}
 	Type           string
 	Full_Name      string
@@ -188,7 +189,7 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	case "IssueCommentEvent":
-		skipped = format("%s comment issue %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s comment issue %d %s", gj.Actor.Login, gj.Payload.Issue.Number, gj.Repo.Name)
 	case "PushEvent":
 		skipped = format("%s push to %s", gj.Actor.Login, gj.Repo.Name)
 	case "ForkEvent":
@@ -205,13 +206,15 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	case "PullRequestReviewCommentEvent":
-		skipped = format("%s comment req %s", gj.Actor.Login, gj.Repo.Name)
+		skipped = format("%s comment pr %s %s", gj.Actor.Login, gj.Payload.Number, gj.Repo.Name)
 	case "PullRequestEvent":
 		switch gj.Payload.Action {
 		case "closed":
-			skipped = format("%s close pull %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s close pr %d %s", gj.Actor.Login, gj.Payload.Number, gj.Repo.Name)
 		case "opened":
-			skipped = format("%s create pull %s", gj.Actor.Login, gj.Repo.Name)
+			skipped = format("%s create pr %d %s", gj.Actor.Login, gj.Payload.Number, gj.Repo.Name)
+		case "reopened":
+			skipped = format("%s reopened pr %d %s", gj.Actor.Login, gj.Payload.Number, gj.Repo.Name)
 		default:
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
