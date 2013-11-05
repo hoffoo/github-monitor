@@ -148,6 +148,9 @@ type GithubJSON struct {
 		Release struct {
 			Tag_Name string
 		}
+		Pages struct {
+			Action string
+		}
 		Ref      string
 		Ref_Type string
 		Action   string
@@ -234,6 +237,11 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 		}
 	case "CommitCommentEvent":
 		skipped = format("%s commit comment %s", gj.Actor.Login, gj.Repo.Name)
+	case "GollumEvent":
+		switch gj.Payload.Pages.Action {
+		case "edited":
+			skipped = format("%s wiki edit %s", gj.Actor.Login, gj.Repo.Name)
+		}
 	default:
 		for _, event := range skipEvents {
 			if event == gj.Type {
