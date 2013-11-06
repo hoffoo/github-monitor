@@ -209,7 +209,7 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 			skipped = format("-> %s %s %s", gj.Type, gj.Actor.Login, gj.Repo.Name)
 		}
 	case "PullRequestReviewCommentEvent":
-		skipped = format("%s comment pr %s %s", gj.Actor.Login, gj.Payload.Number, gj.Repo.Name)
+		skipped = format("%s pr comment on %s", gj.Actor.Login, gj.Repo.Name)
 	case "PullRequestEvent":
 		switch gj.Payload.Action {
 		case "closed":
