@@ -21,6 +21,7 @@ var nodupes map[string]int // TODO make this an array
 var showDupes bool
 var debugOut io.Writer
 var debug bool
+var verbose bool
 
 var skipEvents = []string{
 	"GistEvent",
@@ -28,7 +29,6 @@ var skipEvents = []string{
 }
 
 const (
-	DEBUG_FILE = "/tmp/github-monitor.json"
 	USER_URL   = "https://api.github.com/users/%s/received_events"
 	SEARCH_URL = "https://api.github.com/search/repositories?q=language:%s&sort=stars"
 )
@@ -42,7 +42,8 @@ func main() {
 	flag.BoolVar(&showDupes, "d", false, "show duplicate events")
 	flag.StringVar(&username, "u", "", "username, get recent events")
 	flag.StringVar(&search, "l", "", "language, get the top projects created this month")
-	flag.BoolVar(&debug, "debug", false, "write github response to "+DEBUG_FILE)
+	flag.BoolVar(&debug, "debug", false, "write github response to stdout")
+	flag.BoolVar(&verbose, "v", false, " longer output with links")
 	flag.Parse()
 
 	nodupes = make(map[string]int)
@@ -158,8 +159,15 @@ type GithubJSON struct {
 	}
 	Type           string
 	Full_Name      string
+	Description    string
 	Watchers_Count int
 	Forks_Count    int
+	Html_Url       string
+	Has_Wiki       bool
+	Open_Issues    int
+	Issues_Url     string
+	Homepage       string
+	Wiki_Url       string
 }
 
 func (gj *GithubJSON) GetType() string {
@@ -173,7 +181,19 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 
 	switch gj.GetType() {
 	case "Project":
-		skipped = format("%s %s", gj.Full_Name, strconv.Itoa(gj.Watchers_Count))
+		// TODO this is gross
+		if verbose {
+			fmt.Printf("\n%s\t%s/%s\n%s\n%s\n", gj.Full_Name, strconv.Itoa(gj.Watchers_Count), strconv.Itoa(gj.Forks_Count), gj.Description, gj.Html_Url)
+			if gj.Open_Issues > 0 {
+				fmt.Printf("https://github.com/%s/issues\n : %d issues", gj.Full_Name, gj.Open_Issues)
+			}
+		} else {
+			if gj.Open_Issues > 0 {
+				format("%s %d - %d open", gj.Full_Name, gj.Watchers_Count, gj.Open_Issues)
+			} else {
+				format("%s %d", gj.Full_Name, gj.Watchers_Count)
+			}
+		}
 	case "WatchEvent":
 		skipped = format("%s star %s", gj.Actor.Login, gj.Repo.Name)
 	case "FollowEvent":

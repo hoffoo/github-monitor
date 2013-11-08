@@ -12,6 +12,7 @@ Options:
   -d        show duplicate events
   -m        max number of items to display
   -debug    write github response to /tmp/github-monitor.json
+  -v 		verbose flag, links for urls and more info about projects
 ```
 
 I use it in conky like so: ${execi 3600 /opt/bin/gohub -c 30 hoffoo}
@@ -27,7 +28,7 @@ aleksclark forked ebp/omniauth-box
 
 Or projects and number of watchers:
 ```sh
-skynetservices/skydns 75
+skynetservices/skydns 75 - 2 issues
 mijia/gopark 41
 kayac/isucon3 26
 mattetti/go-web-api-demo 20
