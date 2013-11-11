@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	gcolor "github.com/daviddengcn/go-colortext"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -182,14 +183,20 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 	switch gj.GetType() {
 	case "Project":
 		if summary == false {
-			fmt.Printf("%s\t%d/%d\n", gj.Full_Name, gj.Watchers_Count, gj.Forks_Count)
+			gcolor.ChangeColor(gcolor.Green, true, gcolor.None, false)
+			fmt.Println(gj.Full_Name)
+			gcolor.ResetColor()
 			if len(gj.Description) > 0 {
 				fmt.Println(gj.Description)
 			}
 			if gj.Open_Issues > 0 {
 				fmt.Printf("https://github.com/%s/issues : %d issues\n", gj.Full_Name, gj.Open_Issues)
 			}
-			fmt.Println(gj.Html_Url+"\n")
+
+			fmt.Printf("forked: %d   watched: %d\n", gj.Forks_Count, gj.Watchers_Count)
+			gcolor.ChangeColor(gcolor.Blue, true, gcolor.None, false)
+			fmt.Printf("%s\n\n", gj.Html_Url)
+			gcolor.ResetColor()
 		} else {
 			if gj.Open_Issues > 0 {
 				format("%s %d - %d open", gj.Full_Name, gj.Watchers_Count, gj.Open_Issues)
