@@ -21,7 +21,7 @@ var nodupes map[string]int // TODO make this an array
 var showDupes bool
 var debugOut io.Writer
 var debug bool
-var verbose bool
+var summary bool
 
 var skipEvents = []string{
 	"GistEvent",
@@ -43,7 +43,7 @@ func main() {
 	flag.StringVar(&username, "u", "", "username, get recent events")
 	flag.StringVar(&search, "l", "", "language, get the top projects created this month")
 	flag.BoolVar(&debug, "debug", false, "write github response to stdout")
-	flag.BoolVar(&verbose, "v", false, " longer output with links")
+	flag.BoolVar(&summary, "s", false, "short output")
 	flag.Parse()
 
 	nodupes = make(map[string]int)
@@ -181,12 +181,15 @@ func (gj *GithubJSON) summarize() (skipped bool) {
 
 	switch gj.GetType() {
 	case "Project":
-		// TODO this is gross
-		if verbose {
-			fmt.Printf("\n%s\t%s/%s\n%s\n%s\n", gj.Full_Name, strconv.Itoa(gj.Watchers_Count), strconv.Itoa(gj.Forks_Count), gj.Description, gj.Html_Url)
-			if gj.Open_Issues > 0 {
-				fmt.Printf("https://github.com/%s/issues\n : %d issues", gj.Full_Name, gj.Open_Issues)
+		if summary == false {
+			fmt.Printf("%s\t%d/%d\n", gj.Full_Name, gj.Watchers_Count, gj.Forks_Count)
+			if len(gj.Description) > 0 {
+				fmt.Println(gj.Description)
 			}
+			if gj.Open_Issues > 0 {
+				fmt.Printf("https://github.com/%s/issues : %d issues\n", gj.Full_Name, gj.Open_Issues)
+			}
+			fmt.Println(gj.Html_Url+"\n")
 		} else {
 			if gj.Open_Issues > 0 {
 				format("%s %d - %d open", gj.Full_Name, gj.Watchers_Count, gj.Open_Issues)
